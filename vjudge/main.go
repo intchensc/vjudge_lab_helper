@@ -14,16 +14,6 @@ import (
 	"github.com/intxiaoquan/vjudge_lab_helper/util"
 )
 
-var (
-	problemNum      int
-	contestData     jsonstruct.ContestInfo
-	descriptionData jsonstruct.DescriptionInfo
-	codeQueryData   jsonstruct.CodeQueryInfo
-	problemData     [20]jsonstruct.ProblemInfo //储存每个题目各个字段的结构体
-	outContent      string                     //临时存储单个实验问题描述
-	outCode         string                     //临时存储单个实验AC代码
-)
-
 const (
 	loginUrl       = "https://vjudge.net/user/login"
 	contestUrl     = "https://vjudge.net/contest/"
@@ -55,6 +45,15 @@ func Login(username string, password string) (cookie []*http.Cookie, err error) 
 }
 
 func GetData(username string, cookie []*http.Cookie, contestID string, contestNum int, ans *[20]jsonstruct.Output2File) {
+	var (
+		problemNum      int
+		contestData     jsonstruct.ContestInfo
+		descriptionData jsonstruct.DescriptionInfo
+		codeQueryData   jsonstruct.CodeQueryInfo
+		problemData     [20]jsonstruct.ProblemInfo //储存每个题目各个字段的结构体
+		outContent      string                     //临时存储单个实验问题描述
+		outCode         string                     //临时存储单个实验AC代码
+	)
 
 	log.Println("开始爬取实验数据...")
 	r, err := req.Get(contestUrl+contestID, cookie)
@@ -71,7 +70,6 @@ func GetData(username string, cookie []*http.Cookie, contestID string, contestNu
 	log.Println("开始遍历题目...")
 	//遍历题目数查询题目详细信息
 	for i, item := range contestData.Problems {
-		log.Println("[正在处理题目] " + problemData[i].Tag + "-" + problemData[i].Title)
 		id := item.PublicDescID
 		t := item.PublicDescVersion
 		r, err = req.Get(descriptionUrl+strconv.Itoa(id)+"?"+strconv.FormatInt(t, 10), cookie)
@@ -99,12 +97,23 @@ func GetData(username string, cookie []*http.Cookie, contestID string, contestNu
 		targetChar = rune(65 + i)
 		problemData[i].Tag = string(targetChar)
 		problemData[i].Title = item.Title
+		if len(descriptionData.Sections) <= 1 {
+			log.Println("[题目描述异常] " + problemData[i].Tag + "-" + problemData[i].Title)
+			problemData[i].Description = "该题描述出现异常，请查看网站"
+			problemData[i].Input = "该题描述出现异常，请查看网站"
+			problemData[i].Output = "该题描述出现异常，请查看网站"
+			problemData[i].SampleInput = "该题描述出现异常，请查看网站"
+			problemData[i].SampleOutput = "该题描述出现异常，请查看网站"
+			goto jump
+		}
 		problemData[i].Description = html.UnescapeString(descriptionData.Sections[0].Value.Content)
 		problemData[i].Input = html.UnescapeString(descriptionData.Sections[1].Value.Content)
 		problemData[i].Output = html.UnescapeString(descriptionData.Sections[2].Value.Content)
 		problemData[i].SampleInput = html.UnescapeString(descriptionData.Sections[3].Value.Content)
 		problemData[i].SampleOutput = html.UnescapeString(descriptionData.Sections[4].Value.Content)
 		log.Println("[题目信息查询成功] " + problemData[i].Tag + "-" + problemData[i].Title)
+
+	jump:
 		//获取AC runID
 		submitUrl := "https://vjudge.net/status/data/?draw=1&start=0&length=1&un=" + username + "&num=" + string(targetChar) + "&res=1&language=&inContest=true&contestId=" + contestID
 
@@ -150,9 +159,9 @@ func GetData(username string, cookie []*http.Cookie, contestID string, contestNu
 		outCode += "\r\nCode: \r\n" + problemData[i].Code + "\r\n\r\n"
 
 		//结果写入数组
-		log.Println("[数据写入数组] 题目:" + problemData[i].Tag + "-" + problemData[i].Title)
+		log.Println("[数据写入数组] 题目:" + problemData[i].Tag + "-" + problemData[i].Title + "\n")
 		(*ans)[contestNum].Content = outContent
 		(*ans)[contestNum].Code = outCode
 	}
-	log.Println("[实验数据处理完成] 实验名:" + contestData.Title + " 题目个数:" + strconv.Itoa(problemNum))
+	log.Println("[实验数据处理完成] 实验名:" + contestData.Title + " 题目个数:" + strconv.Itoa(problemNum) + "\n\n\n")
 }

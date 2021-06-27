@@ -36,7 +36,7 @@ func main() {
 	fmt.Scanln(&cntContest)
 	fmt.Println("请输入实验ID, 使用空格隔开！:")
 	for i := 0; i < cntContest; i++ {
-		fmt.Scanln(&contestID[i])
+		fmt.Scanf("%s", &contestID[i])
 	}
 
 	//获取实验信息
