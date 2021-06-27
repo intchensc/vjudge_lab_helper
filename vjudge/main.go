@@ -1,30 +1,27 @@
-package Vjudge
+package vjudge
 
 import (
 	"encoding/json"
-	"fmt"
 	"html"
 	"log"
 	"net/http"
 	"strconv"
 	"strings"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/imroc/req"
-	"github.com/intxiaoquan/vjudge_lab_helper/Handledocx"
-	Jsonstruct "github.com/intxiaoquan/vjudge_lab_helper/JsonStruct"
-	"github.com/intxiaoquan/vjudge_lab_helper/Util"
-	Handlefile "github.com/intxiaoquan/vjudge_lab_helper/handleFile"
+	"github.com/intxiaoquan/vjudge_lab_helper/handle"
+	"github.com/intxiaoquan/vjudge_lab_helper/jsonstruct"
+	"github.com/intxiaoquan/vjudge_lab_helper/util"
 )
 
 var (
 	problemNum      int
-	contestData     Jsonstruct.ContestInfo
-	descriptionData Jsonstruct.DescriptionInfo
-	codeQueryData   Jsonstruct.CodeQueryInfo
-	problemData     [20]Jsonstruct.ProblemInfo
-	outContent      string
-	outCode         string
+	contestData     jsonstruct.ContestInfo
+	descriptionData jsonstruct.DescriptionInfo
+	codeQueryData   jsonstruct.CodeQueryInfo
+	problemData     [20]jsonstruct.ProblemInfo //储存每个题目各个字段的结构体
+	outContent      string                     //临时存储单个实验问题描述
+	outCode         string                     //临时存储单个实验AC代码
 )
 
 const (
@@ -52,42 +49,42 @@ func Login(username string, password string) (cookie []*http.Cookie, err error) 
 		log.Fatal(err)
 		return nil, err
 	}
-	log.Printf("%+v", r)
+	log.Printf("%+v", r.Response().Body)
 	cookie = r.Response().Cookies()
 	return cookie, nil
 }
 
-func GetData(username string, cookie []*http.Cookie, contestID string) {
+func GetData(username string, cookie []*http.Cookie, contestID string, contestNum int, ans *[20]jsonstruct.Output2File) {
+
+	log.Println("开始爬取实验数据...")
 	r, err := req.Get(contestUrl+contestID, cookie)
 	if err != nil {
 		log.Fatal(err)
 	}
 	up := "<textarea style=\"display: none\" name=\"dataJson\">"
 	down := "</textarea>"
-	jsonData := Util.Between(r.String(), up, down)
+	jsonData := util.Between(r.String(), up, down)
 	json.Unmarshal([]byte(jsonData), &contestData)
-
 	problemNum = len(contestData.Problems)
-	fmt.Printf("len:%d\n", problemNum)
-	//获取文字描述
-	fmt.Printf("实验名称：%s\n", contestData.Title)
-	//遍历题目数组获取id和时间戳用于查询题目详细信息
+	log.Println("[实验查询成功] 实验名:" + contestData.Title + " 题目个数:" + strconv.Itoa(problemNum))
+
+	log.Println("开始遍历题目...")
+	//遍历题目数查询题目详细信息
 	for i, item := range contestData.Problems {
+		log.Println("[正在处理题目] " + problemData[i].Tag + "-" + problemData[i].Title)
 		id := item.PublicDescID
 		t := item.PublicDescVersion
 		r, err = req.Get(descriptionUrl+strconv.Itoa(id)+"?"+strconv.FormatInt(t, 10), cookie)
 		if err != nil {
 			log.Fatal(err)
 		}
-
 		up := "<textarea class=\"data-json-container\" style=\"display: none\">"
 		down := "</textarea>"
-		jsonData := Util.Between(r.String(), up, down)
-
+		jsonData := util.Between(r.String(), up, down)
 		content := strings.Replace(jsonData, "\\u003c", "<", -1)
 		content = strings.Replace(content, "\\u003e", ">", -1)
 		content = strings.Replace(content, "\\u0026", "&", -1)
-		content = Util.TrimHtml(content)
+		content = util.TrimHtml(content)
 		flag := strings.Contains(content, "\\r\\n")
 		if flag {
 			content = strings.Replace(content, "\\n      ", "\\r\\n", -1)
@@ -96,21 +93,10 @@ func GetData(username string, cookie []*http.Cookie, contestID string) {
 			content = strings.Replace(content, "\\n", "\\r\\n", -1)
 		}
 		jsonData = content
-		dom, err := goquery.NewDocumentFromReader(strings.NewReader(r.String()))
-		fmt.Println(r.String())
-		if err != nil {
-			log.Fatal(err)
-		}
-		fmt.Println(dom)
-		dom.Find("dd").Each(func(i int, selection *goquery.Selection) {
-			fmt.Println(selection.Text())
-		})
-
 		json.Unmarshal([]byte(jsonData), &descriptionData)
 		//开始生成题目信息结构体
 		var targetChar rune
 		targetChar = rune(65 + i)
-
 		problemData[i].Tag = string(targetChar)
 		problemData[i].Title = item.Title
 		problemData[i].Description = html.UnescapeString(descriptionData.Sections[0].Value.Content)
@@ -118,27 +104,29 @@ func GetData(username string, cookie []*http.Cookie, contestID string) {
 		problemData[i].Output = html.UnescapeString(descriptionData.Sections[2].Value.Content)
 		problemData[i].SampleInput = html.UnescapeString(descriptionData.Sections[3].Value.Content)
 		problemData[i].SampleOutput = html.UnescapeString(descriptionData.Sections[4].Value.Content)
+		log.Println("[题目信息查询成功] " + problemData[i].Tag + "-" + problemData[i].Title)
 		//获取AC runID
 		submitUrl := "https://vjudge.net/status/data/?draw=1&start=0&length=1&un=" + username + "&num=" + string(targetChar) + "&res=1&language=&inContest=true&contestId=" + contestID
-		fmt.Printf("tar:%c\nurl：%s\n\n", targetChar, submitUrl)
+
+		log.Println("[开始获取AC代码状态码]" + problemData[i].Tag + "-" + problemData[i].Title)
 		r, err = req.Get(submitUrl, cookie)
 		if err != nil {
 			log.Fatal(err)
 		}
 		up = "{\"data\":["
 		down = "],\"recordsTotal\""
-		jsonData = Util.Between(r.String(), up, down)
+		jsonData = util.Between(r.String(), up, down)
 		json.Unmarshal([]byte(jsonData), &codeQueryData)
 
+		log.Println("[AC状态码获取成功] 状态码:" + strconv.Itoa(codeQueryData.RunID))
 		//获取AC代码并拼接题目结构体
+		log.Println("[开始查询AC代码]:" + problemData[i].Tag + "-" + problemData[i].Title)
 		r, err = req.Get(reqCodeUrl+strconv.Itoa(codeQueryData.RunID), cookie)
 		if err != nil {
 			log.Fatal(err)
 		}
-
-		var reqCodeData Jsonstruct.ReqCodeInfo
+		var reqCodeData jsonstruct.ReqCodeInfo
 		jsonData = r.String()
-
 		content = strings.Replace(jsonData, "\\u003c", "<", -1)
 		content = strings.Replace(content, "\\u003e", ">", -1)
 		content = strings.Replace(content, "\\u0026", "&", -1)
@@ -146,21 +134,25 @@ func GetData(username string, cookie []*http.Cookie, contestID string) {
 		jsonData = content
 		json.Unmarshal([]byte(jsonData), &reqCodeData)
 		problemData[i].Code = reqCodeData.Code
+		log.Println("[AC代码查询成功] 题目:" + problemData[i].Tag + "-" + problemData[i].Title)
 		//写代码到文件
-		Handlefile.On(username, contestID, problemNum, problemData[i].Code)
+		log.Println("[开始生成代码文件] 题目:" + problemData[i].Tag + "-" + problemData[i].Title)
+		handle.FileOn(username, contestNum, problemNum, problemData[i].Code)
+		log.Println("[生成代码文件结束] 题目:" + problemData[i].Tag + "-" + problemData[i].Title)
 		problemNum = i + 1
-
 		outContent += "Title:" + problemData[i].Tag + "-" + problemData[i].Title
-		outContent += "Description:\r\n" + problemData[i].Description
+		outContent += "\r\nDescription:\r\n" + problemData[i].Description
 		outContent += "\r\nInput:\r\n" + problemData[i].Input
 		outContent += "\r\nOutput:\r\n" + problemData[i].Output
 		outContent += "\r\nSampleInput:\r\n " + problemData[i].SampleInput
 		outContent += "\r\nSampleOutput:\r\n" + problemData[i].SampleOutput + "\r\n\r\n"
-
 		outCode += "Title: " + problemData[i].Tag + "-" + problemData[i].Title
 		outCode += "\r\nCode: \r\n" + problemData[i].Code + "\r\n\r\n"
 
-		//写入word
-		Handledocx.On(outContent, outCode)
+		//结果写入数组
+		log.Println("[数据写入数组] 题目:" + problemData[i].Tag + "-" + problemData[i].Title)
+		(*ans)[contestNum].Content = outContent
+		(*ans)[contestNum].Code = outCode
 	}
+	log.Println("[实验数据处理完成] 实验名:" + contestData.Title + " 题目个数:" + strconv.Itoa(problemNum))
 }
