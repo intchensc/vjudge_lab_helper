@@ -70,6 +70,9 @@ func GetData(username string, cookie []*http.Cookie, contestID string, contestNu
 	log.Println("开始遍历题目...")
 	//遍历题目数查询题目详细信息
 	for i, item := range contestData.Problems {
+		//防止某个题目未成功AC填写上一个题目的代码
+		codeQueryData.RunID = 0
+		var reqCodeData jsonstruct.ReqCodeInfo //AC代码返回结构体
 		id := item.PublicDescID
 		t := item.PublicDescVersion
 		r, err = req.Get(descriptionUrl+strconv.Itoa(id)+"?"+strconv.FormatInt(t, 10), cookie)
@@ -127,6 +130,13 @@ func GetData(username string, cookie []*http.Cookie, contestID string, contestNu
 		jsonData = util.Between(r.String(), up, down)
 		json.Unmarshal([]byte(jsonData), &codeQueryData)
 
+		if codeQueryData.RunID == 0 {
+			log.Println("[AC状态码获取失败] 此题未AC!")
+			reqCodeData.Code = "该题未AC"
+			problemData[i].Code = reqCodeData.Code
+			goto afterQueryAcCode
+		}
+
 		log.Println("[AC状态码获取成功] 状态码:" + strconv.Itoa(codeQueryData.RunID))
 		//获取AC代码并拼接题目结构体
 		log.Println("[开始查询AC代码]:" + problemData[i].Tag + "-" + problemData[i].Title)
@@ -134,7 +144,6 @@ func GetData(username string, cookie []*http.Cookie, contestID string, contestNu
 		if err != nil {
 			log.Fatal(err)
 		}
-		var reqCodeData jsonstruct.ReqCodeInfo
 		jsonData = r.String()
 		content = strings.Replace(jsonData, "\\u003c", "<", -1)
 		content = strings.Replace(content, "\\u003e", ">", -1)
@@ -148,6 +157,7 @@ func GetData(username string, cookie []*http.Cookie, contestID string, contestNu
 		log.Println("[开始生成代码文件] 题目:" + problemData[i].Tag + "-" + problemData[i].Title)
 		handle.FileOn(username, contestNum, problemNum, problemData[i].Code)
 		log.Println("[生成代码文件结束] 题目:" + problemData[i].Tag + "-" + problemData[i].Title)
+	afterQueryAcCode:
 		problemNum = i + 1
 		outContent += "Title:" + problemData[i].Tag + "-" + problemData[i].Title
 		outContent += "\r\nDescription:\r\n" + problemData[i].Description
