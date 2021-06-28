@@ -30,12 +30,12 @@ func FileOn(username string, contestNum int, problemNum int, code string) {
 	}
 	fileName := "./code/" + username + "_" + strconv.Itoa(contestNum+1) + "_" + strconv.Itoa(problemNum) + ".cpp"
 	f, err := os.Create(fileName)
-	defer f.Close()
 	if err != nil {
 		log.Println(err.Error())
 	} else {
 		_, err = f.Write([]byte(code))
 	}
+	f.Close()
 }
 
 func isExist(path string) bool {

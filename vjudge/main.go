@@ -148,14 +148,14 @@ func GetData(username string, cookie []*http.Cookie, contestID string, contestNu
 		content = strings.Replace(jsonData, "\\u003c", "<", -1)
 		content = strings.Replace(content, "\\u003e", ">", -1)
 		content = strings.Replace(content, "\\u0026", "&", -1)
-		content = strings.Replace(content, "\\n", "\\r\\n", -1)
 		jsonData = content
 		json.Unmarshal([]byte(jsonData), &reqCodeData)
 		problemData[i].Code = reqCodeData.Code
+		// fmt.Printf("%q\n", reqCodeData.Code)
 		log.Println("[AC代码查询成功] 题目:" + problemData[i].Tag + "-" + problemData[i].Title)
 		//写代码到文件
 		log.Println("[开始生成代码文件] 题目:" + problemData[i].Tag + "-" + problemData[i].Title)
-		handle.FileOn(username, contestNum, problemNum, problemData[i].Code)
+		handle.FileOn(username, contestNum, i+1, problemData[i].Code)
 		log.Println("[生成代码文件结束] 题目:" + problemData[i].Tag + "-" + problemData[i].Title)
 	afterQueryAcCode:
 		problemNum = i + 1
@@ -166,6 +166,7 @@ func GetData(username string, cookie []*http.Cookie, contestID string, contestNu
 		outContent += "\r\nSampleInput:\r\n " + problemData[i].SampleInput
 		outContent += "\r\nSampleOutput:\r\n" + problemData[i].SampleOutput + "\r\n\r\n"
 		outCode += "Title: " + problemData[i].Tag + "-" + problemData[i].Title
+		problemData[i].Code = strings.Replace(problemData[i].Code, "\n", "\r\n", -1)
 		outCode += "\r\nCode: \r\n" + problemData[i].Code + "\r\n\r\n"
 
 		//结果写入数组
